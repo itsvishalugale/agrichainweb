@@ -4,8 +4,7 @@ import dns from "node:dns";
 // Fix Node.js SRV DNS resolution
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
-import dotenv from "dotenv";
-dotenv.config();
+import "dotenv/config";
 
 import http from "http";
 import app from "./app.js";
