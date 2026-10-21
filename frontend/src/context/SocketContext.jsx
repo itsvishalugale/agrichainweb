@@ -1,99 +1,122 @@
-import { createContext, useContext, useEffect, useState } from "react"
-import { io } from "socket.io-client"
-import { useAuth } from "./AuthContext"
+import { createContext, useContext, useEffect, useState } from "react";
+import { io } from "socket.io-client";
+import { useAuth } from "./AuthContext";
 
-const SocketContext = createContext()
+const SocketContext = createContext();
 
 export const SocketProvider = ({ children }) => {
-  const { user }        = useAuth()
-  const [socket, setSocket] = useState(null)
-  const [onlineUsers, setOnlineUsers] = useState([])
-  const [notifications, setNotifications] = useState([])
-  // notifications = new order alerts, new messages etc
+  const { user } = useAuth();
+
+  const [socket, setSocket] = useState(null);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    if (user) {
-      // Connect to socket when user logs in
-      const newSocket = io("http://localhost:5000", {
-        withCredentials: true,
-      })
+    if (!user?._id) {
+      setSocket(null);
+      return;
+    }
 
-      // Join personal room
-      newSocket.emit("setup", user._id)
+    // Use the deployed Render backend in production.
+    // Set VITE_API_URL in your Vercel environment variables.
+    const SOCKET_URL =
+      import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-      newSocket.on("connected", () => {
-        console.log("🔌 Socket connected!")
-      })
+    const newSocket = io(SOCKET_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
 
-      // Listen for new message notifications
-      newSocket.on("newMessageNotification", (data) => {
-        setNotifications(prev => [...prev, {
-          type:    "message",
+    newSocket.on("connect", () => {
+      console.log("🔌 Socket connected:", newSocket.id);
+      newSocket.emit("setup", user._id);
+    });
+
+    newSocket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error.message);
+    });
+
+    newSocket.on("newMessageNotification", (data) => {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          type: "message",
           message: `New message from ${data.senderName}`,
           data,
-          id:      Date.now()
-        }])
-      })
+          id: Date.now() + Math.random(),
+        },
+      ]);
+    });
 
-      // Listen for new order notifications (farmer)
-      newSocket.on("newOrderNotification", (data) => {
-        setNotifications(prev => [...prev, {
-          type:    "order",
+    newSocket.on("newOrderNotification", (data) => {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          type: "order",
           message: data.message,
           data,
-          id:      Date.now()
-        }])
-      })
+          id: Date.now() + Math.random(),
+        },
+      ]);
+    });
 
-      // Listen for order status updates (buyer)
-      newSocket.on("orderStatusUpdate", (data) => {
-        setNotifications(prev => [...prev, {
-          type:    "status",
+    newSocket.on("orderStatusUpdate", (data) => {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          type: "status",
           message: data.message,
           data,
-          id:      Date.now()
-        }])
-      })
+          id: Date.now() + Math.random(),
+        },
+      ]);
+    });
 
-      // Listen for order confirmed (buyer)
-      newSocket.on("orderConfirmedNotification", (data) => {
-        setNotifications(prev => [...prev, {
-          type:    "confirmed",
+    newSocket.on("orderConfirmedNotification", (data) => {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          type: "confirmed",
           message: data.message,
           data,
-          id:      Date.now()
-        }])
-      })
+          id: Date.now() + Math.random(),
+        },
+      ]);
+    });
 
-      setSocket(newSocket)
+    setSocket(newSocket);
 
-      // Cleanup on logout
-      return () => {
-        newSocket.disconnect()
-        console.log("🔌 Socket disconnected")
-      }
-    }
-  }, [user])
-  // Runs whenever user changes (login/logout)
+    return () => {
+      newSocket.disconnect();
+      setSocket((current) =>
+        current === newSocket ? null : current
+      );
+      console.log("🔌 Socket disconnected");
+    };
+  }, [user?._id]);
 
   const clearNotification = (id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
-  }
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
 
   const clearAllNotifications = () => {
-    setNotifications([])
-  }
+    setNotifications([]);
+  };
 
   return (
-    <SocketContext.Provider value={{
-      socket,
-      notifications,
-      clearNotification,
-      clearAllNotifications,
-    }}>
+    <SocketContext.Provider
+      value={{
+        socket,
+        notifications,
+        clearNotification,
+        clearAllNotifications,
+      }}
+    >
       {children}
     </SocketContext.Provider>
-  )
-}
+  );
+};
 
-export const useSocket = () => useContext(SocketContext)
+export const useSocket = () => useContext(SocketContext);
